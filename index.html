@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mini Genshin Demo</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, sans-serif;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    WASD = move<br>
+    Mouse = look<br>
+    Space = jump
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
+  <script>
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb); // sky blue
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Light (anime-ish soft light)
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+    // Ground
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(200, 200),
+      new THREE.MeshStandardMaterial({ color: 0x55aa55 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    // Player (placeholder character)
+    const player = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.5, 1.2, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0xddddff })
+    );
+    player.position.y = 1;
+    scene.add(player);
+
+    // Simple hills (low-poly terrain vibe)
+    for (let i = 0; i < 30; i++) {
+      const hill = new THREE.Mesh(
+        new THREE.ConeGeometry(
+          Math.random() * 3 + 2,
+          Math.random() * 6 + 3,
+          6
+        ),
+        new THREE.MeshStandardMaterial({ color: 0x4f9b4f })
+      );
+      hill.position.set(
+        (Math.random() - 0.5) * 150,
+        hill.geometry.parameters.height / 2,
+        (Math.random() - 0.5) * 150
+      );
+      scene.add(hill);
+    }
+
+    // Controls
+    const keys = {};
+    document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+    document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+    let velocityY = 0;
+    let onGround = true;
+    let yaw = 0;
+    let pitch = 0;
+
+    document.addEventListener("mousemove", e => {
+      yaw -= e.movementX * 0.002;
+      pitch -= e.movementY * 0.002;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch));
+    });
+
+    document.body.addEventListener("click", () => {
+      document.body.requestPointerLock();
+    });
+
+    // Game loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const speed = 0.12;
+      const forward = new THREE.Vector3(
+        Math.sin(yaw),
+        0,
+        Math.cos(yaw)
+      );
+      const right = new THREE.Vector3(
+        Math.sin(yaw - Math.PI / 2),
+        0,
+        Math.cos(yaw - Math.PI / 2)
+      );
+
+      if (keys["w"]) player.position.add(forward.clone().multiplyScalar(speed));
+      if (keys["s"]) player.position.add(forward.clone().multiplyScalar(-speed));
+      if (keys["a"]) player.position.add(right.clone().multiplyScalar(speed));
+      if (keys["d"]) player.position.add(right.clone().multiplyScalar(-speed));
+
+      // Jump
+      if (keys[" "] && onGround) {
+        velocityY = 0.25;
+        onGround = false;
+      }
+
+      velocityY -= 0.01;
+      player.position.y += velocityY;
+
+      if (player.position.y <= 1) {
+        player.position.y = 1;
+        velocityY = 0;
+        onGround = true;
+      }
+
+      // Camera follow (genshin-style)
+      const camOffset = new THREE.Vector3(
+        Math.sin(yaw) * 6,
+        3 + pitch * 2,
+        Math.cos(yaw) * 6
+      );
+      camera.position.copy(player.position).add(camOffset);
+      camera.lookAt(player.position);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
