@@ -18,6 +18,7 @@
       background: rgba(0,0,0,0.5);
       padding: 10px;
       border-radius: 8px;
+      z-index: 10;
     }
   </style>
 </head>
@@ -25,18 +26,17 @@
   <div id="info">
     WASD = move<br>
     Mouse = look<br>
-    Space = jump
+    Space = jump<br>
+    Left click = attack
   </div>
 
-  <!-- Three.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 
   <script>
-    // Scene
+    /* ================= SCENE ================= */
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // sky blue
+    scene.background = new THREE.Color(0x87ceeb);
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
@@ -44,91 +44,144 @@
       1000
     );
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Light (anime-ish soft light)
+    /* ================= LIGHTING ================= */
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
     const sun = new THREE.DirectionalLight(0xffffff, 1);
     sun.position.set(10, 20, 10);
     scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // Ground
+    /* ================= GROUND ================= */
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
+      new THREE.PlaneGeometry(300, 300),
       new THREE.MeshStandardMaterial({ color: 0x55aa55 })
     );
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
-    // Player (placeholder character)
-    const player = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.5, 1.2, 4, 8),
-      new THREE.MeshStandardMaterial({ color: 0xddddff })
-    );
-    player.position.y = 1;
+    /* ================= PLAYER ================= */
+    const player = new THREE.Group();
     scene.add(player);
 
-    // Simple hills (low-poly terrain vibe)
-    for (let i = 0; i < 30; i++) {
-      const hill = new THREE.Mesh(
-        new THREE.ConeGeometry(
-          Math.random() * 3 + 2,
-          Math.random() * 6 + 3,
-          6
-        ),
-        new THREE.MeshStandardMaterial({ color: 0x4f9b4f })
-      );
-      hill.position.set(
-        (Math.random() - 0.5) * 150,
-        hill.geometry.parameters.height / 2,
-        (Math.random() - 0.5) * 150
-      );
-      scene.add(hill);
-    }
+    const skin = new THREE.MeshStandardMaterial({ color: 0xffddcc });
+    const clothes = new THREE.MeshStandardMaterial({ color: 0x5566ff });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x333333 });
 
-    // Controls
+    // Body
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 1.2, 0.5),
+      clothes
+    );
+    body.position.y = 1.6;
+    player.add(body);
+
+    // Head
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 16, 16),
+      skin
+    );
+    head.position.y = 2.4;
+    player.add(head);
+
+    // Arms
+    const leftArm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.9, 0.25),
+      clothes
+    );
+    leftArm.position.set(-0.7, 1.6, 0);
+    player.add(leftArm);
+
+    const rightArm = leftArm.clone();
+    rightArm.position.x = 0.7;
+    player.add(rightArm);
+
+    // Legs
+    const leftLeg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 1, 0.3),
+      dark
+    );
+    leftLeg.position.set(-0.25, 0.6, 0);
+    player.add(leftLeg);
+
+    const rightLeg = leftLeg.clone();
+    rightLeg.position.x = 0.25;
+    player.add(rightLeg);
+
+    player.position.y = 0;
+
+    /* ================= SWORD ================= */
+    const sword = new THREE.Group();
+
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 1.2, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0xdddddd })
+    );
+    blade.position.y = 0.6;
+    sword.add(blade);
+
+    const handle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.3, 0.15),
+      new THREE.MeshStandardMaterial({ color: 0x553311 })
+    );
+    handle.position.y = 0.15;
+    sword.add(handle);
+
+    sword.position.set(0.7, 1.2, 0.3);
+    sword.rotation.z = Math.PI / 2;
+    player.add(sword);
+
+    /* ================= CONTROLS ================= */
     const keys = {};
     document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
     document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-    let velocityY = 0;
-    let onGround = true;
     let yaw = 0;
     let pitch = 0;
 
     document.addEventListener("mousemove", e => {
       yaw -= e.movementX * 0.002;
       pitch -= e.movementY * 0.002;
-      pitch = Math.max(-1.2, Math.min(1.2, pitch));
+      pitch = Math.max(-0.8, Math.min(0.8, pitch));
     });
 
     document.body.addEventListener("click", () => {
       document.body.requestPointerLock();
+      attacking = true;
     });
 
-    // Game loop
+    /* ================= MOVEMENT ================= */
+    let velocityY = 0;
+    let onGround = true;
+
+    /* ================= ATTACK ================= */
+    let attacking = false;
+    let attackTime = 0;
+
+    /* ================= GAME LOOP ================= */
     function animate() {
       requestAnimationFrame(animate);
 
       const speed = 0.12;
+
+      // Direction vectors (FIXED – no inversion)
       const forward = new THREE.Vector3(
         Math.sin(yaw),
         0,
         Math.cos(yaw)
       );
       const right = new THREE.Vector3(
-        Math.sin(yaw - Math.PI / 2),
+        Math.cos(yaw),
         0,
-        Math.cos(yaw - Math.PI / 2)
+        -Math.sin(yaw)
       );
 
       if (keys["w"]) player.position.add(forward.clone().multiplyScalar(speed));
       if (keys["s"]) player.position.add(forward.clone().multiplyScalar(-speed));
-      if (keys["a"]) player.position.add(right.clone().multiplyScalar(speed));
-      if (keys["d"]) player.position.add(right.clone().multiplyScalar(-speed));
+      if (keys["a"]) player.position.add(right.clone().multiplyScalar(-speed));
+      if (keys["d"]) player.position.add(right.clone().multiplyScalar(speed));
 
       // Jump
       if (keys[" "] && onGround) {
@@ -139,20 +192,35 @@
       velocityY -= 0.01;
       player.position.y += velocityY;
 
-      if (player.position.y <= 1) {
-        player.position.y = 1;
+      if (player.position.y <= 0) {
+        player.position.y = 0;
         velocityY = 0;
         onGround = true;
       }
 
-      // Camera follow (genshin-style)
+      // Rotate player to face direction
+      player.rotation.y = yaw;
+
+      // Attack animation
+      if (attacking) {
+        attackTime += 0.15;
+        sword.rotation.x = -Math.sin(attackTime) * 1.5;
+
+        if (attackTime > Math.PI) {
+          attacking = false;
+          attackTime = 0;
+          sword.rotation.x = 0;
+        }
+      }
+
+      // Camera follow (NORMAL, not inverted)
       const camOffset = new THREE.Vector3(
-        Math.sin(yaw) * 6,
-        3 + pitch * 2,
-        Math.cos(yaw) * 6
+        -Math.sin(yaw) * 6,
+        3,
+        -Math.cos(yaw) * 6
       );
       camera.position.copy(player.position).add(camOffset);
-      camera.lookAt(player.position);
+      camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
 
       renderer.render(scene, camera);
     }
